@@ -26,6 +26,26 @@ way to learn the CLI rather than hide it.
 
 ## Install
 
+Three routes, in order of preference. They all end in the same place: a
+`balena-plus` on your PATH, plus the shell line at the bottom of this section.
+
+### With nix
+
+```bash
+nix profile install github:rileytuttle-havoc/balena-plus   # or
+nix run github:rileytuttle-havoc/balena-plus -- devices    # one-off, installs nothing
+```
+
+This is the one to prefer: it pins the dependency versions, so the tool behaves
+the same on every machine. Updates are `nix profile upgrade balena-plus`. The
+wrapper checks once a day whether this repo has moved on and prints a one-line
+nudge when it has; `BALENA_PLUS_NO_UPDATE_CHECK=1` turns that off.
+
+### With the install script
+
+If you do not have nix, this offers to set it up for you and then does the
+above:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main/install.sh | bash
 ```
@@ -38,8 +58,16 @@ it is [one file](install.sh).
 is already on your PATH. If you do not have one it offers to bring one along;
 if you do, it leaves it alone.
 
-Then add this to your `~/.bashrc` — the installer deliberately does not edit it
-for you:
+### Without nix
+
+The fallback, if you would rather not have nix at all: answer no when the
+installer asks, or pass `--no-nix`. It copies the script to `~/.local/bin` and
+uses whatever `python3` and `fzf` you have. You lose pinned dependency versions
+and the update check; everything else works the same.
+
+### Then, however you installed it
+
+Add this to your `~/.bashrc`. Nothing here edits your shell rc for you:
 
 ```bash
 eval "$(balena-plus shell-init bash)"
@@ -48,25 +76,6 @@ eval "$(balena-plus shell-init bash)"
 That aliases `balena` to the wrapper and turns on tab completion for device and
 fleet names. `\balena` still reaches the raw CLI. Open a new shell and try
 `balena devices`.
-
-### If you already have nix
-
-Skip the installer:
-
-```bash
-nix profile install github:rileytuttle-havoc/balena-plus   # or
-nix run github:rileytuttle-havoc/balena-plus -- devices    # one-off, installs nothing
-```
-
-Updates are `nix profile upgrade balena-plus`. The wrapper checks once a day
-whether this repo has moved on and prints a one-line nudge when it has;
-`BALENA_PLUS_NO_UPDATE_CHECK=1` turns that off.
-
-### Without nix
-
-Answer no when the installer asks, or pass `--no-nix`. It copies the script to
-`~/.local/bin` and uses whatever `python3` and `fzf` you have. You lose pinned
-dependency versions and the update check; everything else works the same.
 
 ## Requirements
 
