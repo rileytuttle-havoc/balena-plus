@@ -17,7 +17,7 @@ set -euo pipefail
 # Set by the generated preamble; the defaults are the run-from-a-checkout case.
 plus_completion="${plus_completion:-}"
 self_rev="${self_rev:-unknown}"
-upstream_url="${upstream_url:-https://github.com/rileytuttle/balena-plus}"
+upstream_url="${upstream_url:-https://github.com/rileytuttle-havoc/balena-plus}"
 
 prog="balena"
 device_list_json=""

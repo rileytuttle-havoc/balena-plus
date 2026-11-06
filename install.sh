@@ -3,7 +3,7 @@
 # device names, picks devices out of a fleet with fzf, and adds ssh/tunnel/
 # logs/ps helpers.
 #
-#   curl -fsSL https://raw.githubusercontent.com/rileytuttle/balena-plus/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main/install.sh | bash
 #
 # Asks before it does anything. Safe to re-run: it upgrades an existing install
 # rather than duplicating it, and it never edits your shell rc for you.
@@ -14,8 +14,8 @@
 
 set -euo pipefail
 
-raw_url="https://raw.githubusercontent.com/rileytuttle/balena-plus/main"
-flake_ref="github:rileytuttle/balena-plus"
+raw_url="https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main"
+flake_ref="github:rileytuttle-havoc/balena-plus"
 nix_flags=(--extra-experimental-features 'nix-command flakes')
 
 assume_yes=0

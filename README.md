@@ -27,7 +27,7 @@ way to learn the CLI rather than hide it.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rileytuttle/balena-plus/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main/install.sh | bash
 ```
 
 It explains what it is about to do and asks before each step (`y`, `N`, or `Y`
@@ -54,8 +54,8 @@ fleet names. `\balena` still reaches the raw CLI. Open a new shell and try
 Skip the installer:
 
 ```bash
-nix profile install github:rileytuttle/balena-plus   # or
-nix run github:rileytuttle/balena-plus -- devices    # one-off, installs nothing
+nix profile install github:rileytuttle-havoc/balena-plus   # or
+nix run github:rileytuttle-havoc/balena-plus -- devices    # one-off, installs nothing
 ```
 
 Updates are `nix profile upgrade balena-plus`. The wrapper checks once a day
