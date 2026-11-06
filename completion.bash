@@ -27,10 +27,12 @@ _balena_plus_devices() {
 _balena_plus_complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD - 1]}"
-    # A leading -v/--verbose shifts every word position by one
+    # A leading -v/--verbose or -q/--quiet shifts every word position by one
     local off=0
-    if [ "$COMP_CWORD" -gt 1 ] && [[ "${COMP_WORDS[1]}" == -v || "${COMP_WORDS[1]}" == --verbose ]]; then
-        off=1
+    if [ "$COMP_CWORD" -gt 1 ]; then
+        case "${COMP_WORDS[1]}" in
+            -v | --verbose | -q | --quiet) off=1 ;;
+        esac
     fi
     local cmd="${COMP_WORDS[1 + off]:-}"
 

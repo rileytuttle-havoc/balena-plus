@@ -21,7 +21,12 @@ upstream_url="${upstream_url:-https://github.com/rileytuttle-havoc/balena-plus}"
 
 prog="balena"
 device_list_json=""
-verbose="${BALENA_PLUS_VERBOSE:-0}"
+# Verbose is the default -- printing the raw balena command before running it
+# is half the point of this wrapper, which aims to teach the CLI rather than
+# hide it. BALENA_PLUS_QUIET=1 turns it off for good, -q/--quiet for one
+# command, and -v/--verbose turns it back on over either.
+verbose=1
+[ "${BALENA_PLUS_QUIET:-0}" = 1 ] && verbose=0
 dim="" reset=""
 if [ -t 2 ]; then
     dim=$'\e[2m' reset=$'\e[0m'
@@ -36,7 +41,7 @@ update_stamp="$cache_dir/update-check"
 
 usage() {
     cat <<'EOF'
-Usage: balena [-v|--verbose] <command> [args...]
+Usage: balena [-v|--verbose|-q|--quiet] <command> [args...]
 
 Thin wrapper around the balena CLI that:
   - runs 'balena login --web' automatically if not logged in
@@ -45,9 +50,11 @@ Thin wrapper around the balena CLI that:
     picker (BALENA_PLUS_PICKER=select for a plain numbered menu)
   - adds a few convenience commands (logs, ps, uuid, devices, tunnel)
 
-  -v, --verbose   Print the equivalent raw balena commands to stderr
-                  (also BALENA_PLUS_VERBOSE=1). A bare 'balena -v' still
-                  prints the CLI version.
+  -q, --quiet     Do not print the equivalent raw balena command, which is
+                  otherwise printed to stderr before every command.
+                  BALENA_PLUS_QUIET=1 does the same for every invocation.
+  -v, --verbose   Print it even when BALENA_PLUS_QUIET=1 is set. A bare
+                  'balena -v' still prints the CLI version.
 
 Commands:
   ssh <device> [service]            SSH into the host OS (or a service container)
@@ -74,11 +81,12 @@ Examples:
   balena tunnel foo-device 8080 9000:9001 (several ports at once)
   balena ssh foo-fleet          (pick a device from the fleet)
   balena device restart foo-device
-  balena -v logs foo-device bar-app -f    (show the raw commands too)
+  balena -q logs foo-device bar-app -f    (without the raw command lines)
 
 The raw CLI (and its own help) is still at '\balena', e.g. '\balena help'.
 It is whatever balena-cli is on your PATH -- this wrapper does not ship one.
 
+BALENA_PLUS_QUIET=1 silences the raw balena command lines for good.
 BALENA_PLUS_NO_UPDATE_CHECK=1 silences the once-a-day "update available" line.
 EOF
 }
@@ -88,7 +96,7 @@ die() {
     exit 1
 }
 
-# In verbose mode, print a raw balena command you could type by hand
+# Print a raw balena command you could type by hand, unless quieted
 show() {
     if [ "$verbose" = 1 ]; then
         printf '%s+ %s%s\n' "$dim" "$*" "$reset" >&2
@@ -463,12 +471,13 @@ cmd_passthrough() {
     exec balena "${args[@]}"
 }
 
-# Leading -v/--verbose turns on verbose mode; a bare 'balena -v' falls
-# through to the CLI's own version flag
-if [ "$#" -ge 2 ] && { [ "$1" = "-v" ] || [ "$1" = "--verbose" ]; }; then
-    verbose=1
-    shift
-fi
+# A leading -v/--verbose or -q/--quiet overrides the default for this one
+# command. A bare 'balena -v' is the exception: with no command after it that
+# is the CLI's own version flag, so it is passed straight through.
+case "${1:-}" in
+    -q | --quiet) verbose=0; shift ;;
+    -v | --verbose) if [ "$#" -ge 2 ]; then verbose=1; shift; fi ;;
+esac
 
 if [ "$#" -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ] || [ "$1" = "help" ]; then
     usage

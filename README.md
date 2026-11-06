@@ -21,8 +21,9 @@ instead of looking up a UUID, and adds a few things the raw CLI makes you work f
 - Everything else passes straight through to `balena`, with device names resolved
   in the obvious slots (`device <sub> <device>`, `--device <device>`).
 
-`-v` / `--verbose` prints the raw balena commands it is running, so it is also a
-way to learn the CLI rather than hide it.
+Before each command it prints the raw balena command it is about to run, so it
+is a way to learn the CLI rather than hide it. `-q` / `--quiet` drops that for
+one command, and `BALENA_PLUS_QUIET=1` for good.
 
 ## Install
 
