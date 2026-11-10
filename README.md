@@ -30,6 +30,9 @@ one command, and `BALENA_PLUS_QUIET=1` for good.
 Three routes, in order of preference. They all end in the same place: a
 `balena-plus` on your PATH, plus the shell line at the bottom of this section.
 
+On Windows, skip to [Windows](#windows) — it has its own installer and does
+not use nix.
+
 ### With nix
 
 ```bash
@@ -78,7 +81,26 @@ That aliases `balena` to the wrapper and turns on tab completion for device and
 fleet names. `\balena` still reaches the raw CLI. Open a new shell and try
 `balena devices`.
 
+## Windows
+
+There is a PowerShell port in [`windows/`](windows/) — same commands, same
+output, its own implementation so that work on one cannot break the other.
+It targets Windows PowerShell 5.1, which ships with Windows 10 and 11, so
+there is nothing to install first.
+
+```powershell
+irm https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main/windows/install.ps1 | iex
+```
+
+[`windows/README.md`](windows/README.md) covers it properly. The short
+version of what differs: `balena-raw` instead of `\balena`, `Import-Module`
+instead of `shell-init`, `balena devices` emits objects you can pipe, and
+there is no python3 dependency.
+
 ## Requirements
+
+For the bash version. The Windows port needs only PowerShell 5.1 and `balena` —
+see [`windows/README.md`](windows/README.md).
 
 | | |
 |---|---|
@@ -104,3 +126,11 @@ mechanism rather than two. Running the script straight out of a checkout works
 too: both fall back to sensible defaults.
 
 Widening platform support is the `systems` list at the top of `flake.nix`.
+
+The Windows port is independent of all of the above — no nix, no flake. It
+has a test suite, which the bash side does not:
+
+```powershell
+powershell -NoProfile -File windows\tests\BalenaPlus.Tests.ps1
+Invoke-ScriptAnalyzer -Path windows -Recurse -Settings windows\PSScriptAnalyzerSettings.psd1
+```
