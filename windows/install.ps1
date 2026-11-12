@@ -266,6 +266,17 @@ function Add-ProfileLine {
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     Add-Content -LiteralPath $PROFILE -Value @('', $Marker, $importLine)
     Write-Info "  added to $PROFILE"
+
+    # $PROFILE is per-edition: a line added from Windows PowerShell does
+    # nothing in PowerShell 7, and the other way round. Worth saying out
+    # loud, because Windows Terminal makes running both of them normal.
+    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+        $other = 'PowerShell 7 (pwsh)'
+    } else {
+        $other = 'Windows PowerShell 5.1'
+    }
+    Write-Note "  that is this edition's profile. If you also use $other,"
+    Write-Note '  add the same line to its $PROFILE.'
 }
 
 # ------------------------------------------------------------------------ run

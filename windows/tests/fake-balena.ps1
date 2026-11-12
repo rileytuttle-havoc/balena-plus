@@ -36,6 +36,8 @@ if ($args.Count -gt 2) { $a2 = [string]$args[2] }
 if ($args.Count -gt 3) { $a3 = [string]$args[3] }
 
 if ($a0 -eq 'whoami') { Write-Output 'riley'; exit 0 }
+# Lets the wrapper's exit-code propagation be tested.
+if ($a0 -eq 'exit-with') { exit [int]$a1 }
 if ($a0 -eq 'fleet' -and $a1 -eq 'list') { Write-Output $fleets; exit 0 }
 
 if ($a0 -eq 'device' -and $a1 -eq 'list') {

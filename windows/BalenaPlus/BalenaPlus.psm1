@@ -116,12 +116,18 @@ function Get-PlusCli {
     $cmd = Get-Command -Name 'balena' -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if (-not $cmd) {
+        # No leading indentation on the continuation lines, deliberately.
+        # This reaches the user through Write-Error, and PowerShell 7's
+        # default error view joins a multi-line message back into one
+        # paragraph -- where an indent survives as a double space in the
+        # middle of a sentence. Flush left reads correctly in both that view
+        # and the plain multi-line one Windows PowerShell 5.1 uses.
         throw @'
 balena CLI not found in PATH.
-  balena-plus wraps your own balena-cli rather than shipping one, so that
-  installing it does not duplicate a CLI you already have. Install it with
-  'npm install -g balena-cli', or from
-  https://github.com/balena-io/balena-cli/blob/master/INSTALL.md
+balena-plus wraps your own balena-cli rather than shipping one, so that
+installing it does not duplicate a CLI you already have. Install it with
+'npm install -g balena-cli', or from
+https://github.com/balena-io/balena-cli/blob/master/INSTALL.md
 '@
     }
     $script:CliPath = $cmd.Source

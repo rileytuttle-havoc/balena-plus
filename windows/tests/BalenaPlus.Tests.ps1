@@ -235,6 +235,70 @@ T 'after --device'     'gateway-a'           ((Comp 'balena foo --device gate') 
 $c = Comp 'balena ssh sensor-01 '
 T 'no device names past the slot' $false (($c -contains 'sensor-01') -or ($c -contains 'gateway-a'))
 
+
+Section 'help needs no CLI and no account'
+ClearCalls
+T 'no args prints usage' $true ((balena 6>&1 | Out-String) -match 'Usage: balena')
+T 'and asks balena nothing' 0 (@(Calls)).Count
+T '-h'     $true ((balena -h     6>&1 | Out-String) -match 'Usage: balena')
+T '--help' $true ((balena --help 6>&1 | Out-String) -match 'Usage: balena')
+T 'help'   $true ((balena help   6>&1 | Out-String) -match 'Usage: balena')
+
+Section 'balena-raw, the escape hatch'
+ClearCalls
+$rawOut = balena-raw note --device gateway-a hello 6>&1 | Out-String
+T 'does not resolve device names' 'note --device gateway-a hello' (LastCall)
+T 'prints no command line'        $false ($rawOut -match '\+ balena')
+
+Section 'exit codes reach the caller'
+# The wrapper runs inside the user's shell, so a failing balena has to leave
+# $LASTEXITCODE behind rather than exiting anything.
+$global:LASTEXITCODE = 0
+balena exit-with 7 6>$null 2>$null | Out-Null
+T 'balena''s own exit code survives' 7 $LASTEXITCODE
+$global:LASTEXITCODE = 0
+balena uuid no-such 6>$null 2>$null | Out-Null
+T 'a wrapper error is exit 1'        1 $LASTEXITCODE
+$global:LASTEXITCODE = 0
+balena devices 6>$null | Out-Null
+T 'success leaves it at 0'           0 $LASTEXITCODE
+
+Section 'fleet picker: the numbered menu'
+# A function in the global scope shadows the Read-Host cmdlet everywhere,
+# module scope included, which is the only way to drive the menu with no
+# terminal to type into. Redefined rather than parameterised, so the answer
+# stays a literal and the test needs no global variable.
+$env:BALENA_PLUS_PICKER = 'select'
+function global:Read-Host { param([string] $Prompt) return '2' }
+# field-fleet is the fake's two-device fleet: sensor-01 online, sensor-02
+# not, and the picker puts online first -- so '2' is sensor-02.
+T 'picks by number' 'bbbb2222bbbb2222bbbb2222bbbb2222' (balena uuid field-fleet 6>$null)
+function global:Read-Host { param([string] $Prompt) return '9' }
+T 'out of range is refused' $true ((balena uuid field-fleet 2>&1 6>$null | Out-String) -match 'no device selected')
+Remove-Item function:global:Read-Host -ErrorAction SilentlyContinue
+$env:BALENA_PLUS_PICKER = $null
+
+Section 'Update-BalenaPlus'
+$updateOk = $true
+try { Update-BalenaPlus -WhatIf | Out-Null } catch { $updateOk = $false }
+T '-WhatIf downloads nothing and throws nothing' $true $updateOk
+
+Section 'no balena on PATH'
+# Last, because it clears the module's cached CLI path. The shim is moved
+# aside rather than the PATH edited, so Get-Command genuinely finds nothing.
+$hidden = "$shim.hidden"
+Move-Item -LiteralPath $shim -Destination $hidden
+$global:LASTEXITCODE = 0
+$missing = balena devices 2>&1 6>$null | Out-String
+# Flattened, because the two error views disagree about where to wrap it and
+# PowerShell 7 adds colour and a gutter. The point is only that both halves
+# of the message -- the diagnosis and the fix -- survive to the user.
+$esc  = [char]27
+$flat = ($missing -replace "$esc\[[0-9;]*m", ' ') -replace '[\r\n|]+', ' ' -replace '\s+', ' '
+T 'says what is wrong' $true ($flat -match 'balena CLI not found in PATH')
+T 'and how to fix it'  $true ($flat -match "npm install -g balena-cli")
+T 'and exits 1'        1     $LASTEXITCODE
+Move-Item -LiteralPath $hidden -Destination $shim
 } finally {
     Remove-Module BalenaPlus -Force -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue

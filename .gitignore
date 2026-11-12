@@ -1,2 +1,5 @@
 result
 result-*
+
+# the dockur/windows disk, if you test the port that way
+.win/

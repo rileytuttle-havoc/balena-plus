@@ -134,3 +134,8 @@ has a test suite, which the bash side does not:
 powershell -NoProfile -File windows\tests\BalenaPlus.Tests.ps1
 Invoke-ScriptAnalyzer -Path windows -Recurse -Settings windows\PSScriptAnalyzerSettings.psd1
 ```
+
+Both of those run from Linux as well — `nix shell nixpkgs#powershell` is
+enough for the suite, and the analyzer settings check the source against a
+captured Windows PowerShell 5.1 profile. [`windows/README.md`](windows/README.md#testing-it-without-a-windows-machine)
+has the rest of the ladder, up to a real 5.1.
