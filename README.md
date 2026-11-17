@@ -92,6 +92,12 @@ there is nothing to install first.
 irm https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main/windows/install.ps1 | iex
 ```
 
+Or, if you have the repo and would rather not open a terminal at all,
+double-click [`install.cmd`](install.cmd) in this folder. It is a launcher,
+not a second installer -- it starts the same `windows/install.ps1` with the
+execution-policy flag a double-click cannot supply, and waits for a keypress
+at the end so you can read what it did.
+
 [`windows/README.md`](windows/README.md) covers it properly. The short
 version of what differs: `balena-raw` instead of `\balena`, `Import-Module`
 instead of `shell-init`, `balena devices` emits objects you can pipe, and

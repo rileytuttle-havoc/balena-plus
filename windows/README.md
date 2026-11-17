@@ -18,6 +18,14 @@ It explains what it is about to do and asks before each step (`y`, `N`, or `Y`
 for yes-to-all). Safe to re-run: it upgrades in place rather than duplicating
 anything.
 
+From a checkout, [`install.cmd`](../install.cmd) in the repo root does the
+same thing for anyone who would rather double-click than type. It only adds
+`-NoProfile -ExecutionPolicy Bypass` and a pause at the end -- the execution
+policy because the default refuses to run a `.ps1` from disk, and the pause
+because a double-clicked console window otherwise closes before you can read
+the result. Switches are forwarded, so `install.cmd -Yes` and
+`install.cmd -Uninstall` work from a terminal.
+
 To pass switches, build a scriptblock — `iex` cannot forward arguments:
 
 ```powershell
