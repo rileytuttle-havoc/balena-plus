@@ -296,6 +296,21 @@ $dv = & $mod { @(Invoke-PlusCliJson -CliArgs @('device', 'list', '--json')) }
 T 'device json is flat too'     4             $dv.Count
 T 'device elements are objects' 'sensor-01'   $dv[0].device_name
 
+Section 'a broken fleet lookup does not read as a typo'
+# The failure that cost an afternoon: Find-PlusFleet swallowed every error
+# into $null, so a fleet list that never ran was indistinguishable from a
+# misspelled name, and the message blamed the query either way.
+$env:FAKE_BALENA_FLEET_FAIL = '1'
+$broken = (balena uuid lab 2>&1 6>$null | Out-String) -replace '\s+', ' '
+T 'still fails'          $true ($broken -match "no device or fleet matching 'lab'")
+T 'names the real cause' $true ($broken -match 'the fleet lookup failed')
+T 'and quotes balena'    $true ($broken -match 'Unauthorized')
+T 'with the exit code'   $true ($broken -match 'exit 1')
+$env:FAKE_BALENA_FLEET_FAIL = $null
+# A genuine miss stays clean -- no cause clause when there is no cause.
+$typo = (balena uuid no-such-thing 2>&1 6>$null | Out-String) -replace '\s+', ' '
+T 'a real miss stays terse' $false ($typo -match 'the fleet lookup failed')
+
 Section 'Update-BalenaPlus'
 $updateOk = $true
 try { Update-BalenaPlus -WhatIf | Out-Null } catch { $updateOk = $false }

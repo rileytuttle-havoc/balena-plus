@@ -241,18 +241,68 @@ sys.exit(3)
 ' "$mode" "$query"
 }
 
-# Match a fleet by name or slug (case-insensitive). Prints the slug; exits 3 if no match.
+# Where match_fleet leaves the reason a lookup failed, as opposed to simply not
+# matching. It runs in a command substitution, so a variable it set would die
+# with the subshell; the path is handed down instead and the reason written
+# there, for resolve_uuid to read back.
+fleet_error_file=""
+
+# Flatten balena's stderr onto one line and record it as the reason.
+note_fleet_error() {
+    local summary="$1" errfile="$2" detail=""
+    [ -n "$fleet_error_file" ] || return 0
+    if [ -s "$errfile" ]; then
+        detail=": $(tr '\n' ' ' < "$errfile" | tr -s ' ' | sed 's/ *$//' | cut -c1-200)"
+    fi
+    printf '%s%s' "$summary" "$detail" > "$fleet_error_file"
+}
+
+# Match a fleet by name or slug (case-insensitive). Prints the slug; exits 3 if
+# no match, and 4 if the lookup itself failed. resolve_uuid needs that
+# distinction: without it a 'balena fleet list' that never ran is reported as a
+# mistyped name, which sends you off checking your spelling instead.
+#
+# The list and the match are separate steps now, rather than one pipeline,
+# because a pipeline cannot tell the two apart -- pipefail reports balena's
+# exit code and python's alike.
 match_fleet() {
-    local query="$1"
-    balena fleet list --json | python3 -c '
+    local query="$1" json slug rc=0 err
+    err="$(mktemp)" || return 4
+
+    # '|| rc=$?', not 'if ! json=...': inside an 'if !' the exit code has
+    # already been consumed by the test, and $? reads 0 however balena failed.
+    json="$(balena fleet list --json 2>"$err")" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        note_fleet_error "balena fleet list --json failed (exit $rc)" "$err"
+        rm -f "$err"
+        return 4
+    fi
+
+    rc=0
+    slug="$(printf '%s' "$json" | python3 -c '
 import json, sys
 query = sys.argv[1].lower()
-for f in json.load(sys.stdin):
+try:
+    fleets = json.load(sys.stdin)
+except Exception as e:
+    sys.exit(f"not JSON: {e}")
+for f in fleets:
     if query in (f.get("app_name", "").lower(), f.get("slug", "").lower()):
         print(f.get("slug") or f["app_name"])
         sys.exit(0)
 sys.exit(3)
-' "$query"
+' "$query" 2>"$err")" || rc=$?
+
+    case "$rc" in
+        0) printf '%s\n' "$slug" ;;
+        3) ;;
+        *)
+            note_fleet_error "could not read 'balena fleet list --json' (exit $rc)" "$err"
+            rc=4
+            ;;
+    esac
+    rm -f "$err"
+    return "$rc"
 }
 
 # Interactively pick a device from a fleet (online devices first). Prints the
@@ -307,7 +357,7 @@ for d in devices:
 # Resolve a device name, UUID or fleet name to a full device UUID.
 # Order: exact device name / UUID prefix, fleet (interactive selector), name substring.
 resolve_uuid() {
-    local query="$1" uuid fleet rc=0
+    local query="$1" uuid fleet rc=0 reason=""
     uuid="$(match_device exact "$query")" || rc=$?
     case "$rc" in
         0)
@@ -320,7 +370,13 @@ resolve_uuid() {
     esac
 
     rc=0
+    fleet_error_file="$(mktemp)" || fleet_error_file=""
     fleet="$(match_fleet "$query")" || rc=$?
+    if [ -n "$fleet_error_file" ]; then
+        reason="$(cat "$fleet_error_file" 2>/dev/null || true)"
+        rm -f "$fleet_error_file"
+        fleet_error_file=""
+    fi
     if [ "$rc" -eq 0 ]; then
         uuid="$(select_fleet_device "$fleet")"
         show "balena device list --fleet $(printf '%q' "$fleet")   # picked -> $uuid"
@@ -335,7 +391,14 @@ resolve_uuid() {
             show "balena device list | grep -i $(printf '%q' "$query")   # -> $uuid"
             echo "$uuid"
             ;;
-        3) die "no device or fleet matching '$query'" ;;
+        3)
+            # Without the first branch this blames the query for every failure,
+            # including a fleet lookup that never ran -- which reads as a typo.
+            if [ -n "$reason" ]; then
+                die "no device or fleet matching '$query' (the fleet lookup failed, so no fleet name could have matched: $reason)"
+            fi
+            die "no device or fleet matching '$query'"
+            ;;
         *) exit "$rc" ;;
     esac
 }

@@ -37,6 +37,11 @@ $script:ApiUrl      = 'https://api.github.com/repos/rileytuttle-havoc/balena-plu
 # install.ps1 drops a rev.txt beside this file. Running straight from a
 # checkout leaves it absent, which disables the update check -- the same
 # "unknown" fallback the nix build uses.
+# Why the last fleet lookup came back empty, if it failed rather than simply
+# not matching. Read by Resolve-PlusUuid so a broken lookup cannot masquerade
+# as a mistyped name. Reset per top-level invocation.
+$script:FleetLookupError = ''
+
 $script:SelfRev = 'unknown'
 $script:RevFile = Join-Path $PSScriptRoot 'rev.txt'
 if (Test-Path -LiteralPath $script:RevFile) {
@@ -142,6 +147,11 @@ function Invoke-PlusCliJson {
 
     $cli = Get-PlusCli
     $previous = $null
+    $errText = ''
+    # balena's own stderr is the most useful thing there is when a call fails,
+    # so it goes to a file rather than $null. 2>&1 is not an option: merging it
+    # into stdout would corrupt the JSON we are here to parse.
+    $errFile = [System.IO.Path]::GetTempFileName()
     try {
         try {
             $previous = [Console]::OutputEncoding
@@ -149,15 +159,23 @@ function Invoke-PlusCliJson {
         } catch {
             $previous = $null   # some hosts refuse; carry on undecorated
         }
-        $out = & $cli @CliArgs 2>$null
+        $out = & $cli @CliArgs 2>$errFile
     } finally {
         if ($previous) {
             try { [Console]::OutputEncoding = $previous } catch { }
         }
+        # Cmdlets do not touch $LASTEXITCODE, so reading and deleting here is
+        # safe ahead of the exit-code check below.
+        try {
+            $errText = [string](Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue)
+        } catch { }
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     }
 
     if ($LASTEXITCODE -ne 0) {
-        throw "balena $($CliArgs -join ' ') failed (exit $LASTEXITCODE)"
+        $detail = ''
+        if ($errText) { $detail = ': ' + (($errText -replace '\s+', ' ').Trim()) }
+        throw "balena $($CliArgs -join ' ') failed (exit $LASTEXITCODE)$detail"
     }
     $text = ($out -join "`n").Trim()
     if (-not $text) { return @() }
@@ -267,13 +285,17 @@ function Find-PlusDevice {
 
 function Find-PlusFleet {
     # Match a fleet by name or slug, case-insensitively. Returns the slug, or
-    # $null. A failure to list fleets is treated as "no match" so that a
-    # permissions quirk degrades to the substring search rather than hard-failing.
+    # $null. A failure to list fleets is still treated as "no match", so that a
+    # permissions quirk degrades to the substring search rather than
+    # hard-failing -- but the reason is kept rather than erased, so that
+    # Resolve-PlusUuid can report it instead of blaming the query.
     param([string] $Query)
+    $script:FleetLookupError = ''
     $lower = $Query.ToLowerInvariant()
     try {
         $fleets = @(Invoke-PlusCliJson -CliArgs @('fleet', 'list', '--json'))
     } catch {
+        $script:FleetLookupError = $_.Exception.Message
         return $null
     }
     foreach ($f in $fleets) {
@@ -374,6 +396,12 @@ function Resolve-PlusUuid {
         return $uuid
     }
 
+    # Without the second clause this message blames the query for every
+    # failure -- including a fleet lookup that never ran, which reads as a typo
+    # and sends you looking in the wrong place entirely.
+    if ($script:FleetLookupError) {
+        throw "no device or fleet matching '$Query' (the fleet lookup failed, so no fleet name could have matched: $script:FleetLookupError)"
+    }
     throw "no device or fleet matching '$Query'"
 }
 
@@ -879,6 +907,7 @@ function Invoke-BalenaPlus {
     # Memo is per top-level invocation: a long-lived shell session must not
     # keep serving a device list fetched an hour ago.
     $script:DeviceList = $null
+    $script:FleetLookupError = ''
 
     $script:Verbose = $true
     if ($env:BALENA_PLUS_QUIET -eq '1') { $script:Verbose = $false }

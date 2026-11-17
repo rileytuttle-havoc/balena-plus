@@ -38,7 +38,17 @@ if ($args.Count -gt 3) { $a3 = [string]$args[3] }
 if ($a0 -eq 'whoami') { Write-Output 'riley'; exit 0 }
 # Lets the wrapper's exit-code propagation be tested.
 if ($a0 -eq 'exit-with') { exit [int]$a1 }
-if ($a0 -eq 'fleet' -and $a1 -eq 'list') { Write-Output $fleets; exit 0 }
+if ($a0 -eq 'fleet' -and $a1 -eq 'list') {
+    # Lets the "a broken fleet lookup must not read as a typo" case be tested.
+    # Real stderr, not Write-Error: the wrapper captures the process's error
+    # stream, so an ErrorRecord would not exercise the same path.
+    if ($env:FAKE_BALENA_FLEET_FAIL) {
+        [Console]::Error.WriteLine('BalenaRequestError: Request error: Unauthorized')
+        exit 1
+    }
+    Write-Output $fleets
+    exit 0
+}
 
 if ($a0 -eq 'device' -and $a1 -eq 'list') {
     if ($a2 -eq '--fleet') {
