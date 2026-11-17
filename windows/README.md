@@ -53,7 +53,11 @@ The installer handles two Windows-specific snags on its own:
   does not refuse them.
 
 Installed to `%LOCALAPPDATA%\balena-plus\BalenaPlus`. Uninstalling is deleting
-that folder and the two profile lines, which is all `-Uninstall` does.
+that folder and the two profile lines, which is all `-Uninstall` does -- or
+double-click [`uninstall.cmd`](../uninstall.cmd) in the repo root, which is
+the same launcher as `install.cmd` with that switch already applied. It
+exists so the option is visible to someone looking at a folder rather than
+reading about a flag.
 
 ## Then
 

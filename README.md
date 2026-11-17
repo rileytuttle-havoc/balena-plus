@@ -103,6 +103,29 @@ version of what differs: `balena-raw` instead of `\balena`, `Import-Module`
 instead of `shell-init`, `balena devices` emits objects you can pipe, and
 there is no python3 dependency.
 
+## Uninstalling
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main/uninstall.sh | bash
+```
+
+Handles both install routes: it removes the nix profile entry if there is
+one, deletes `~/.local/bin/balena-plus` and `~/.local/share/balena-plus` if
+there are those, and shows you each path before touching it. `--yes` skips
+the prompts.
+
+It does not edit your shell rc, for the same reason `install.sh` does not --
+that file is yours. It does grep your `.bashrc`, `.bash_profile`, `.profile`
+and `.zshrc` for the `shell-init` line and tell you which file and line it is
+on, so you can take it out yourself.
+
+On Windows, double-click [`uninstall.cmd`](uninstall.cmd), or run
+`windows\install.ps1 -Uninstall`. Either removes the module and the two
+profile lines.
+
+The balena CLI is never touched by any of this. It was yours, not something
+balena-plus installed.
+
 ## Requirements
 
 For the bash version. The Windows port needs only PowerShell 5.1 and `balena` —
