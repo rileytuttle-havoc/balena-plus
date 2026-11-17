@@ -1,0 +1,50 @@
+# A throwaway Windows Server 2022 VM with this repo mounted as drive Z:, for
+# the handful of checks that need a real Windows PowerShell 5.1. See the
+# "Testing it without a Windows machine" section of README.md.
+#
+#   mkdir -p .win && docker compose -f windows/docker-compose.yml up -d
+#
+# First boot installs Windows unattended (~6 GB download, 15-25 minutes);
+# watch it at http://127.0.0.1:8006. After that it boots in about a minute.
+
+services:
+  windows:
+    image: dockurr/windows
+    container_name: balena-plus-win
+
+    environment:
+      # Windows Server 2022. `core11` is Tiny11 Core at 3 GB if you want the
+      # smallest thing with 5.1 on it, at the cost of running an unofficial
+      # stripped build.
+      VERSION: "2022"
+      DISK_SIZE: "32G"
+      RAM_SIZE: "4G"
+      CPU_CORES: "4"
+      USERNAME: "Docker"
+      PASSWORD: "admin"
+
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+
+    # Bound to loopback on purpose: this guest has a published password and
+    # no business being reachable from the LAN.
+    ports:
+      - "127.0.0.1:8006:8006"       # web viewer, mainly for the install
+      - "127.0.0.1:3389:3389/tcp"   # RDP
+      - "127.0.0.1:3389:3389/udp"
+      - "127.0.0.1:2222:22"         # guest OpenSSH, once it is turned on
+
+    volumes:
+      # The VM disk. Gitignored; delete .win/ to start the install over.
+      # Create it yourself first -- the daemon would make it root-owned.
+      - ../.win:/storage
+      # The repo itself, read-write, as drive Z: in the guest. Edits on
+      # either side are visible immediately on the other.
+      - ../:/shared
+
+    # Windows needs a moment to shut down properly on `docker compose down`.
+    stop_grace_period: 2m
+    restart: "no"

@@ -130,29 +130,65 @@ you get without it.
 so there is no Linux-hosted `servercore` image and no Wine route either —
 anything that runs 5.1 is a VM underneath. [dockur/windows] is the smallest
 amount of ceremony around that: a container that installs Windows unattended
-on KVM, with the repo mounted in.
+on KVM, with the repo mounted in. [`docker-compose.yml`](docker-compose.yml)
+is that, pre-wired:
 
 ```bash
-docker run -it --rm --name win \
-  --device=/dev/kvm --device=/dev/net/tun --cap-add NET_ADMIN \
-  -p 8006:8006 -e VERSION=2022 -e DISK_SIZE=32G \
-  -v "$PWD/.win:/storage" -v "$PWD:/shared" \
-  docker.io/dockurr/windows
+mkdir -p .win   # or the daemon creates it root-owned
+docker compose -f windows/docker-compose.yml up -d
 ```
 
-`VERSION=2022` is Windows Server 2022 (a 6 GB download); `core11` is Tiny11
-Core at 3 GB if you want the smallest thing with 5.1 on it. The console is at
-<http://127.0.0.1:8006>, the repo shows up in the guest as drive `Z:`, and
-`.win/` holds the disk between runs — drop that mount for a throwaway. Then,
-in the guest:
+You need `/dev/kvm` (so, hardware virtualization enabled in firmware) and
+membership in the `docker` group; nothing else. First boot downloads ~6 GB
+and installs Windows Server 2022 unattended over 15-25 minutes — watch it at
+<http://127.0.0.1:8006>, answer nothing. Later boots take about a minute,
+because `.win/` holds the disk between runs. `docker compose down` shuts the
+guest down cleanly; deleting `.win/` starts the install over.
+
+The repo is mounted read-write as drive `Z:` in the guest, live — edits on
+either side show up immediately on the other, so there is no copy step and a
+Windows-side edit lands in your real working tree. Run the suite with:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File Z:\windows\tests\BalenaPlus.Tests.ps1
 ```
 
-`-ExecutionPolicy Bypass` because a mapped drive counts as the remote zone,
-which `RemoteSigned` refuses. For a repeatable loop rather than a one-off,
-turn on the guest's OpenSSH server once and run that line over `ssh`.
+`powershell.exe` rather than `pwsh` is the whole point — that is 5.1.
+`-ExecutionPolicy Bypass` is needed because a mapped drive counts as the
+remote zone, which `RemoteSigned` refuses.
+
+Once installed, prefer RDP over the web viewer, which is sluggish and has no
+clipboard sharing. The login is `Docker` / `admin`:
+
+```bash
+xfreerdp3 /v:127.0.0.1 /u:Docker /p:admin /dynamic-resolution
+```
+
+To drive it from the Linux side without clicking into the VM at all, turn on
+the guest's OpenSSH server once:
+
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Set-Service sshd -StartupType Automatic; Start-Service sshd
+New-NetFirewallRule -Name sshd -DisplayName 'SSH' -Enabled True `
+  -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
+```
+
+The compose file already publishes `127.0.0.1:2222` for it, and the whole
+loop collapses to one line you can rerun after every edit:
+
+```bash
+ssh -p 2222 Docker@127.0.0.1 'powershell -NoProfile -ExecutionPolicy Bypass -File Z:\windows\tests\BalenaPlus.Tests.ps1'
+```
+
+(dockur documents the forwarding of 8006 and 3389 but not of arbitrary
+published ports, so confirm 2222 actually reaches the guest the first time;
+if it does not, RDP still works and the published port costs nothing.)
+
+Everything here is bound to loopback deliberately: the guest has a published
+password in a committed file and no business being reachable from the LAN.
+Swap `VERSION: "2022"` for `core11` — Tiny11 Core, 3 GB — if you want the
+smallest thing with 5.1 on it and don't mind an unofficial stripped build.
 
 What (1) and (2) cannot see is the genuinely edition-specific handful:
 whether `Register-ArgumentCompleter -Native` fires for a simple function on
