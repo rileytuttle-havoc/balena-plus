@@ -278,6 +278,24 @@ T 'out of range is refused' $true ((balena uuid field-fleet 2>&1 6>$null | Out-S
 Remove-Item function:global:Read-Host -ErrorAction SilentlyContinue
 $env:BALENA_PLUS_PICKER = $null
 
+Section 'JSON arrays survive the 5.1 pipeline'
+# Windows PowerShell 5.1 emits a JSON array as ONE pipeline object instead of
+# enumerating it, so 'return @(ConvertFrom-Json ...)' hands callers a
+# single-element array wrapping the real one -- Count 1, and .app_name
+# member-enumerating to every name joined by a space. pwsh 7 enumerates, so
+# these assertions pass trivially there and only have teeth under 5.1. That is
+# the point: this shipped broken on Windows while the suite stayed green on
+# Linux. See the comment in Invoke-PlusCliJson.
+$mod = Get-Module BalenaPlus
+$fl = & $mod { @(Invoke-PlusCliJson -CliArgs @('fleet', 'list', '--json')) }
+T 'fleet json is a flat array'  2             $fl.Count
+T 'elements are objects'        'field-fleet' $fl[0].app_name
+T 'and not joined together'     'lab'         $fl[1].app_name
+T 'match past the first fleet'  'riley/lab'   (& $mod { Find-PlusFleet -Query 'lab' })
+$dv = & $mod { @(Invoke-PlusCliJson -CliArgs @('device', 'list', '--json')) }
+T 'device json is flat too'     4             $dv.Count
+T 'device elements are objects' 'sensor-01'   $dv[0].device_name
+
 Section 'Update-BalenaPlus'
 $updateOk = $true
 try { Update-BalenaPlus -WhatIf | Out-Null } catch { $updateOk = $false }

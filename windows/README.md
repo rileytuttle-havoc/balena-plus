@@ -92,7 +92,7 @@ powershell -NoProfile -File windows\tests\BalenaPlus.Tests.ps1
 pwsh       -NoProfile -File windows/tests/BalenaPlus.Tests.ps1
 ```
 
-79 tests, no Pester dependency, no account or network needed — a fake balena
+85 tests, no Pester dependency, no account or network needed — a fake balena
 CLI is put on PATH for the duration. **Worth running under Windows PowerShell
 5.1 specifically**, since that is the version being targeted.
 

@@ -162,7 +162,17 @@ function Invoke-PlusCliJson {
     $text = ($out -join "`n").Trim()
     if (-not $text) { return @() }
     try {
-        return @(ConvertFrom-Json $text)
+        # Assign, then let 'return' do the enumerating. NOT
+        # 'return @(ConvertFrom-Json $text)':  Windows PowerShell 5.1 emits a
+        # JSON array as ONE pipeline object rather than enumerating it, so
+        # @(...) collects a single item and wraps the real array in a second
+        # one. Callers then see Count = 1, and $fleets[0].app_name
+        # member-enumerates to every name joined by a space. pwsh 7 enumerates
+        # and hides the whole thing, which is why this only ever broke on
+        # Windows. Assignment captures the array itself on both editions, and
+        # 'return' unrolls it into a flat result for the caller.
+        $parsed = ConvertFrom-Json $text
+        return $parsed
     } catch {
         throw "could not parse JSON from 'balena $($CliArgs -join ' ')': $($_.Exception.Message)"
     }
