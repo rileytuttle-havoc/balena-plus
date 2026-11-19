@@ -65,11 +65,14 @@ $script:CacheDir      = Get-PlusCacheRoot
 $script:NamesCache    = Join-Path $script:CacheDir 'device-names.txt'
 $script:CommandsCache = Join-Path $script:CacheDir 'balena-commands.txt'
 $script:UpdateStamp   = Join-Path $script:CacheDir 'update-check'
+$script:SshHintStamp  = Join-Path $script:CacheDir 'ssh-keepalive-hint'
 
 # Resolved once per session; Get-PlusCli re-probes if the CLI disappears.
 $script:CliPath = $null
 # Device list memo, valid only for the duration of one top-level invocation.
 $script:DeviceList = $null
+# Whether the ssh keepalive hint has had its look-in this session.
+$script:SshKeepaliveChecked = $false
 
 $script:PlusCommands = @('ssh', 'tunnel', 'logs', 'ps', 'uuid', 'devices', 'help')
 
@@ -89,6 +92,15 @@ function Write-PlusShow {
     param([string] $Text)
     if ($script:Verbose) {
         Write-Host "+ $Text" -ForegroundColor DarkGray
+    }
+}
+
+function Write-PlusNote {
+    # An aside on the same channel as Write-PlusShow, for something that is not
+    # a balena command you could have typed yourself.
+    param([string] $Text)
+    if ($script:Verbose) {
+        Write-Host "# $Text" -ForegroundColor DarkGray
     }
 }
 
@@ -405,6 +417,72 @@ function Resolve-PlusUuid {
     throw "no device or fleet matching '$Query'"
 }
 
+function Test-PlusSshKeepalive {
+    # balena-cli runs whatever ssh is first on PATH and gives it no
+    # ServerAliveInterval (src/utils/ssh.ts), and 'balena device ssh' has no -o
+    # of its own to pass one through. A session that goes quiet for a few
+    # minutes is then fair game for anything in the path -- a NAT table, a
+    # firewall, a VPN drops the idle connection and you get
+    #
+    #   Connection to ssh.balena-devices.com closed by remote host.
+    #   SSH: Remote command "enter ..." exited with non-zero status code "255"
+    #   Are the SSH keys correctly configured in balenaCloud? ...
+    #
+    # where that last line is boilerplate balena attaches to every 255, and the
+    # keys are fine -- they authenticated minutes ago.
+    #
+    # The bash version fixes this outright, by putting a shim named 'ssh' on
+    # the PATH of the balena it runs. That lever is missing here: balena-cli
+    # spawns the program without a shell, Node will not start a .cmd that way,
+    # and a shim would have to be a real .exe. What is left is your own ssh
+    # config, which is yours to edit -- so this points at it instead, once a
+    # day at most, and only when ssh itself says no keepalive is configured.
+    if ($script:SshKeepaliveChecked) { return }
+    $script:SshKeepaliveChecked = $true
+    if ($env:BALENA_PLUS_NO_SSH_KEEPALIVE -eq '1') { return }
+    if (-not $script:Verbose) { return }
+
+    try {
+        if (Test-Path -LiteralPath $script:SshHintStamp) {
+            $age = (Get-Date) - (Get-Item -LiteralPath $script:SshHintStamp).LastWriteTime
+            if ($age.TotalDays -lt 1) { return }
+        }
+
+        # No ssh at all is balena's to report; it words that better than we do.
+        $ssh = @(Get-Command -Name 'ssh' -CommandType Application -ErrorAction SilentlyContinue)
+        if ($ssh.Count -eq 0) { return }
+
+        # Ask ssh what it would use for the balena gateway rather than reading
+        # the config file: it knows about Host patterns, Include and the
+        # system-wide file, and we would only ever approximate the three.
+        $out = & $ssh[0].Source '-G' 'ssh.balena-devices.com' 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $out) { return }  # too old to know -G
+        $interval = $null
+        foreach ($line in $out) {
+            if ($line -match '^\s*serveraliveinterval\s+(\d+)\s*$') {
+                $interval = [int]$Matches[1]
+                break
+            }
+        }
+        if ($null -eq $interval -or $interval -gt 0) { return }
+
+        if (-not (Test-Path -LiteralPath $script:CacheDir)) {
+            New-Item -ItemType Directory -Path $script:CacheDir -Force | Out-Null
+        }
+        Set-Content -LiteralPath $script:SshHintStamp -Value (Get-Date).ToString('o')
+
+        $config = Join-Path $HOME '.ssh\config'
+        Write-PlusNote 'ssh keepalive: not configured, so a session left idle for a few minutes can be'
+        Write-PlusNote '  dropped -- "closed by remote host", which balena then blames on your SSH keys.'
+        Write-PlusNote "  Two lines in $config stop it:"
+        Write-PlusNote '      Host ssh.balena-devices.com'
+        Write-PlusNote '          ServerAliveInterval 30'
+        Write-PlusNote '  Said once a day; BALENA_PLUS_NO_SSH_KEEPALIVE=1 silences it for good.'
+    } catch {
+        # A hint is never worth failing a command over.
+    }
+}
+
 function Invoke-PlusHostExec {
     # Run a shell script on the device host OS, piped over 'balena device ssh'.
     #
@@ -413,6 +491,7 @@ function Invoke-PlusHostExec {
     # device's shell would see a stray carriage return as a final line. Exiting
     # first means that line is never read.
     param([string] $Uuid, [string] $Script)
+    Test-PlusSshKeepalive
     $cli = Get-PlusCli
     ($Script + "`nexit`n") | & $cli device ssh $Uuid
 }
@@ -424,6 +503,7 @@ function Invoke-PlusSsh {
     if ($Rest.Count -lt 1) { throw 'usage: balena ssh <device> [service]' }
     $uuid = Resolve-PlusUuid -Query $Rest[0]
     $tail = @($Rest | Select-Object -Skip 1)
+    Test-PlusSshKeepalive
     Write-PlusShow ("balena device ssh $uuid " + (Format-PlusArgs $tail)).TrimEnd()
     $cli = Get-PlusCli
     & $cli device ssh $uuid @tail
@@ -558,6 +638,12 @@ function Invoke-PlusPassthrough {
         if ($a[$i] -eq '--device') {
             $a[$i + 1] = Resolve-PlusUuid -Query $a[$i + 1]
         }
+    }
+
+    # 'balena device ssh foo' spelled out in full lands here rather than in
+    # Invoke-PlusSsh, and is worth the same look at your keepalive settings.
+    if ($a.Count -ge 2 -and $a[0] -eq 'device' -and $a[1] -eq 'ssh') {
+        Test-PlusSshKeepalive
     }
 
     Write-PlusShow "balena $(Format-PlusArgs $a)"
@@ -855,6 +941,7 @@ Update-BalenaPlus          re-runs the installer to upgrade in place.
 BALENA_PLUS_QUIET=1 silences the raw balena command lines for good.
 BALENA_PLUS_NO_UPDATE_CHECK=1 silences the once-a-day "update available" line.
 BALENA_PLUS_PICKER selects the fleet picker: fzf, grid or select.
+BALENA_PLUS_NO_SSH_KEEPALIVE=1 silences the ssh keepalive hint.
 '@
 }
 

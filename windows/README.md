@@ -83,10 +83,20 @@ divergences:
 | `devices` output | formatted text | objects: `balena devices \| Where-Object Status -eq online` |
 | Upgrade | `nix profile upgrade` | `Update-BalenaPlus`, which re-runs the installer |
 | Fleet picker | fzf, else `select` menu | fzf, else a numbered menu; `BALENA_PLUS_PICKER=grid` for `Out-GridView` |
+| ssh keepalives | set on the ssh balena runs, via a shim on its `PATH` | pointed at, not set: a hint naming the two lines to add to your `.ssh\config` |
 | Dependencies | `python3`, optional `fzf` | none — `ConvertFrom-Json` is built in |
 
 Environment variables (`BALENA_PLUS_QUIET`, `BALENA_PLUS_NO_UPDATE_CHECK`,
-`BALENA_PLUS_PICKER`) behave identically.
+`BALENA_PLUS_PICKER`, `BALENA_PLUS_NO_SSH_KEEPALIVE`) behave identically.
+`BALENA_PLUS_SSH_ALIVE_INTERVAL` is bash-only -- there is nothing to set here.
+
+The keepalive row is the one real gap. balena-cli runs whatever `ssh` it finds
+on `PATH`, so the bash version can put a shim in front of it that adds
+`-o ServerAliveInterval=30`. Here it cannot: balena-cli spawns the program
+without a shell, Node will not start a `.cmd` that way, and a shim would have
+to be a real `.exe`. So the module checks what `ssh -G` reports and, when no
+keepalive is configured, says once a day which two lines to put in
+`%USERPROFILE%\.ssh\config`. `BALENA_PLUS_NO_SSH_KEEPALIVE=1` silences it.
 
 ## Requirements
 

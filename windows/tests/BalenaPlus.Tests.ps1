@@ -66,6 +66,8 @@ $env:PATH = $FakeBin + [System.IO.Path]::PathSeparator + $env:PATH
 $env:LOCALAPPDATA = $AppData
 $env:FAKE_BALENA_CAPTURE = $Capture
 $env:BALENA_PLUS_NO_UPDATE_CHECK = '1'
+# The ssh keepalive hint has a section of its own; everywhere else it is noise.
+$env:BALENA_PLUS_NO_SSH_KEEPALIVE = '1'
 $env:BALENA_PLUS_QUIET = $null
 
 Import-Module $Manifest -Force
@@ -315,6 +317,85 @@ Section 'Update-BalenaPlus'
 $updateOk = $true
 try { Update-BalenaPlus -WhatIf | Out-Null } catch { $updateOk = $false }
 T '-WhatIf downloads nothing and throws nothing' $true $updateOk
+
+Section 'ssh keepalive hint'
+# balena-cli sets no ServerAliveInterval, so a session left idle for a few
+# minutes dies with "closed by remote host" and balena blames your SSH keys for
+# it. The bash wrapper fixes that outright with a PATH shim; here the lever is
+# your own ssh config, so the module can only point at it -- quietly, once a
+# day, and only when ssh itself says there is no keepalive configured.
+$SshBin = Join-Path $Work 'sshbin'
+New-Item -ItemType Directory -Force -Path $SshBin | Out-Null
+function FakeSsh {
+    # $Interval: what 'ssh -G' should report. $null means an ssh too old to
+    # know -G, which answers on stderr and exits non-zero.
+    param($Interval)
+    $path = Join-Path $SshBin ('ssh' + $(if ($onWindows) { '.cmd' } else { '' }))
+    if ($onWindows) {
+        if ($null -eq $Interval) {
+            $body = @('@echo off', 'echo unknown option -- G 1>&2', 'exit /b 255')
+        } else {
+            $body = @('@echo off', 'echo user root', "echo serveraliveinterval $Interval",
+                      'echo serveralivecountmax 3')
+        }
+    } else {
+        if ($null -eq $Interval) {
+            $body = @('#!/bin/sh', 'echo "unknown option -- G" >&2', 'exit 255')
+        } else {
+            $body = @('#!/bin/sh',
+                      "printf 'user root\nserveraliveinterval $Interval\nserveralivecountmax 3\n'")
+        }
+    }
+    Set-Content -LiteralPath $path -Encoding ASCII -Value $body
+    if (-not $onWindows) { & /bin/chmod +x $path }
+}
+$sshPathSaved = $env:PATH
+$env:PATH = $SshBin + [System.IO.Path]::PathSeparator + $env:PATH
+$env:BALENA_PLUS_NO_SSH_KEEPALIVE = $null
+$hintStamp = & $m { $script:SshHintStamp }
+function Hint {
+    # Both memos reset, so each case is asked afresh.
+    & $m { $script:SshKeepaliveChecked = $false }
+    Remove-Item -LiteralPath $hintStamp -ErrorAction SilentlyContinue
+    return ((& $m { Test-PlusSshKeepalive } 6>&1 | Out-String) -replace '\s+', ' ')
+}
+
+FakeSsh 0
+$hint = Hint
+T 'no keepalive: says so'          $true ($hint -match 'ssh keepalive: not configured')
+T 'names the option to set'        $true ($hint -match 'ServerAliveInterval 30')
+T 'and the file to set it in'      $true ($hint -match [regex]::Escape((Join-Path $HOME '.ssh\config')))
+T 'says how to silence it'         $true ($hint -match 'BALENA_PLUS_NO_SSH_KEEPALIVE=1')
+T 'once per session'               ''    ((& $m { Test-PlusSshKeepalive } 6>&1 | Out-String).Trim())
+T 'and once a day after that'      ''    ((& $m { $script:SshKeepaliveChecked = $false; Test-PlusSshKeepalive } 6>&1 | Out-String).Trim())
+
+FakeSsh 30
+T 'a keepalive already set is left alone' '' (Hint).Trim()
+FakeSsh $null
+T 'an ssh too old for -G says nothing'    '' (Hint).Trim()
+
+FakeSsh 0
+$env:BALENA_PLUS_NO_SSH_KEEPALIVE = '1'
+T 'the env var silences it'               '' (Hint).Trim()
+$env:BALENA_PLUS_NO_SSH_KEEPALIVE = $null
+
+# Wiring: the paths that actually spawn ssh ask, and the ones that do not stay
+# quiet. 'devices' is the control -- no ssh, nothing to say.
+& $m { $script:SshKeepaliveChecked = $false }
+Remove-Item -LiteralPath $hintStamp -ErrorAction SilentlyContinue
+T 'balena ssh asks'        $true  ((balena ssh sensor-01 6>&1 | Out-String) -match 'ssh keepalive')
+& $m { $script:SshKeepaliveChecked = $false }
+Remove-Item -LiteralPath $hintStamp -ErrorAction SilentlyContinue
+T 'balena ps asks'         $true  ((balena ps sensor-01 6>&1 | Out-String) -match 'ssh keepalive')
+& $m { $script:SshKeepaliveChecked = $false }
+Remove-Item -LiteralPath $hintStamp -ErrorAction SilentlyContinue
+T 'device ssh in full too' $true  ((balena device ssh sensor-01 6>&1 | Out-String) -match 'ssh keepalive')
+& $m { $script:SshKeepaliveChecked = $false }
+Remove-Item -LiteralPath $hintStamp -ErrorAction SilentlyContinue
+T 'balena devices does not' $false ((balena devices 6>&1 | Out-String) -match 'ssh keepalive')
+
+$env:BALENA_PLUS_NO_SSH_KEEPALIVE = '1'
+$env:PATH = $sshPathSaved
 
 Section 'no balena on PATH'
 # Last, because it clears the module's cached CLI path. The shim is moved

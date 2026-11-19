@@ -17,6 +17,13 @@ instead of looking up a UUID, and adds a few things the raw CLI makes you work f
 - **`logs`** — container logs through the device's own balena engine, picking the
   container by substring.
 - **`ps`**, **`uuid`**, **`devices`** — the small stuff, without the ceremony.
+- **ssh sessions that stay up** — balena-cli sets no keepalives, so a session
+  left idle for a few minutes can be dropped by a NAT table, a firewall or a
+  VPN: `closed by remote host`, which the CLI then blames on your SSH keys.
+  The wrapper adds `ServerAliveInterval` to the ssh that balena runs, and says
+  so in a dim line. If your own `~/.ssh/config` already sets one, that wins and
+  nothing is added. `BALENA_PLUS_NO_SSH_KEEPALIVE=1` turns it off altogether,
+  `BALENA_PLUS_SSH_ALIVE_INTERVAL` changes the 30 seconds.
 - Runs `balena login --web` for you when you are not logged in.
 - Everything else passes straight through to `balena`, with device names resolved
   in the obvious slots (`device <sub> <device>`, `--device <device>`).
@@ -110,9 +117,10 @@ curl -fsSL https://raw.githubusercontent.com/rileytuttle-havoc/balena-plus/main/
 ```
 
 Handles both install routes: it removes the nix profile entry if there is
-one, deletes `~/.local/bin/balena-plus` and `~/.local/share/balena-plus` if
-there are those, and shows you each path before touching it. `--yes` skips
-the prompts.
+one, deletes `~/.local/bin/balena-plus`, `~/.local/share/balena-plus` and the
+cache in `~/.cache/balena-plus` (completions, device names, the ssh keepalive
+shim) if there are those, and shows you each path before touching it. `--yes`
+skips the prompts.
 
 It does not edit your shell rc, for the same reason `install.sh` does not --
 that file is yours. It does grep your `.bashrc`, `.bash_profile`, `.profile`

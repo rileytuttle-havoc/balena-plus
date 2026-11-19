@@ -18,6 +18,10 @@ set -euo pipefail
 nix_flags=(--extra-experimental-features 'nix-command flakes')
 bin_dir="$HOME/.local/bin"
 share_dir="$HOME/.local/share/balena-plus"
+# Generated state, not installed files: the device-name and completion caches
+# and the ssh keepalive shim (an executable named ssh, which balena-plus puts
+# on the PATH of the balena it runs -- see use_ssh_keepalive in balena-plus.sh).
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/balena-plus"
 
 assume_yes=0
 
@@ -88,13 +92,14 @@ fi
 
 # ----------------------------------------------------------------- the copy route
 
-heading "Copied files"
+heading "Copied files and cached state"
 copy_paths=()
 [ -e "$bin_dir/balena-plus" ] && copy_paths+=("$bin_dir/balena-plus")
 [ -e "$share_dir" ] && copy_paths+=("$share_dir")
+[ -e "$cache_dir" ] && copy_paths+=("$cache_dir")
 
 if [ "${#copy_paths[@]}" -eq 0 ]; then
-    info "Nothing at $bin_dir/balena-plus or $share_dir."
+    info "Nothing at $bin_dir/balena-plus, $share_dir or $cache_dir."
 else
     info "These would be deleted:"
     for p in "${copy_paths[@]}"; do
